@@ -6,29 +6,58 @@
 
 import google.generativeai as genai
 
-API_KEY = "AIzaSyBg_0TJ_miX2UHYFjxNp9nH7EYGi9LiOJA"  # Replace with actual key or pull from dbutils.secrets
+API_KEY = "Your API_Key"
 genai.configure(api_key=API_KEY)
 
 # COMMAND ----------
 
 # DBTITLE 1,Final Code
+import google.generativeai as genai
+import os
+
+
+API_KEY = "AIzaSyBg_0TJ_miX2UHYFjxNp9nH7EYGi9LiOJA"
+genai.configure(api_key=API_KEY)
+
 class MedicalChatbot:
-    def __init__(self, model):
-        self.model = model
-        self.history = []
+    """
+    A chatbot designed to answer health-related questions in a simple and friendly manner.
+    It maintains a short history of the conversation to provide context.
+    """
+    def __init__(self, model_name="gemma-3-27b-it"):
+        """
+        Initializes the chatbot with a specific generative model.
+        """
+        try:
+            self.model = genai.GenerativeModel(model_name)
+            self.history = []
+            print(f"Successfully initialized model: {model_name}")
+        except Exception as e:
+            print(f"Error initializing model: {e}")
+            self.model = None
+            self.history = []
+
 
     def run(self, query):
-        self.history.append(f"Patient: {query}")
-        context = "\n".join(self.history[-5:])  # Last 5 messages
+        """
+        Takes a user's query, adds it to the conversation history,
+        generates a response from the model, and returns the answer.
+        """
+        if not self.model:
+            return "⚠️ Error: The generative model is not initialized. Please check your API key and model name."
 
+        # Append the user's query to the history
+        self.history.append(f"Patient: {query}")
+        # Use the last 5 interactions to provide context
+        context = "\n".join(self.history[-5:])
+
+        # Construct the prompt with clear instructions for the model
         prompt = f"""
         You are a medical assistant chatbot. Respond to the patient’s health-related questions in a simple, friendly, and medically accurate manner.
         Respond with clear, concise, and helpful information. Always provide information in a patient-friendly tone.
         If the query relates to symptoms, diseases, or treatments, provide accurate medical insights.
         Keep the conversation going.
         Give a short and concise answer.
-
-        Question: {query}
 
         Conversation so far:
         {context}
@@ -37,71 +66,56 @@ class MedicalChatbot:
         """
 
         try:
+            # Generate content using the model
             response = self.model.generate_content(prompt)
             answer = response.text.strip()
+            # Append the chatbot's answer to the history
             self.history.append(f"Chatbot: {answer}")
             return answer
         except Exception as e:
-            return f"⚠️ Error: {str(e)}"
+            # Handle potential API errors or other exceptions
+            return f"⚠️ Error generating response: {str(e)}"
 
+# --- Main Execution: Health FAQ Chatbot Interface ---
+def health_faq_chatbot():
+    """
+    The main function to run the command-line interface for the chatbot.
+    """
+    # Instantiate the chatbot
+    bot = MedicalChatbot()
 
-# COMMAND ----------
+    # Initial greeting
+    print("\n--- Health FAQ Chatbot ---")
+    print("Hello! I'm here to answer your health questions.")
+    print("Type 'quit' or 'exit' to end the chat.")
+    print("-" * 28)
 
-# Load the model (you might want to use "gemini-pro" instead of "gemma-3-27b-it")
-model = genai.GenerativeModel("gemma-3-27b-it")  # Or "gemma-7b-it" if supported
-bot = MedicalChatbot(model)
+    # Main loop to keep the chat going
+    while True:
+        # Get input from the user
+        user_input = input("You: ")
 
-# COMMAND ----------
+        # Check if the user wants to quit
+        if user_input.lower() in ["quit", "exit"]:
+            print("\nChatbot: Goodbye! Take care and stay healthy.")
+            break
 
-# Simulate chat interaction using a loop (or use dbutils.widgets for UI)
-while True:
-    user_input = input("👤 You: ")
-    if user_input.lower() in ["exit", "quit"]:
-        print("🤖 Chatbot: Goodbye! Stay healthy. 🩺")
-        break
+        # Get the response from the chatbot and print it
+        if user_input:
+            response = bot.run(user_input)
+            print(f"Chatbot: {response}\n")
 
-    reply = bot.run(user_input)
-    print(f"🤖 Chatbot: {reply}\n")
+if __name__ == "__main__":
+    # Run the chatbot application
+    health_faq_chatbot()
+
 
 # COMMAND ----------
 
 # DBTITLE 1,MLFlow
 import google.generativeai as genai
 import mlflow.pyfunc
-class MedicalChatbot:
-    def __init__(self):
-        self.model = None
-        self.history = []
-    def load_model(self):
-        genai.configure(api_key="AIzaSyBg_0TJ_miX2UHYFjxNp9nH7EYGi9LiOJA")
-        self.model = genai.GenerativeModel("gemma-3-27b-it")
-    def run(self, question: str) -> str:
-        if self.model is None:
-            self.load_model()
 
-        self.history.append(f"Patient: {question}")
-        context = "\n".join(self.history[-5:])
-        prompt = f"""
-        You are a medical assistant chatbot. Respond to the patient’s health-related questions in a simple, friendly, and medically accurate manner.
-        Respond with clear, concise, and helpful information. Always provide information in a patient-friendly tone.
-        If the query relates to symptoms, diseases, or treatments, provide accurate medical insights.
-        Keep the conversation going.
-        Give a short and concise answer.
-
-        Question: {question}
-        Conversation so far:
-        {context}
-        Chatbot:
-        """
-        try:
-            response = self.model.generate_content(prompt)
-            answer = response.text.strip()
-            self.history.append(f"Chatbot: {answer}")
-            return answer
-        except Exception as e:
-            return f"⚠️ Error: {str(e)}"
-
-# ✅ MLflow wrapper
 class ChatbotWrapper(mlflow.pyfunc.PythonModel):
     def load_context(self, context):
         self.chatbot = MedicalChatbot()
@@ -111,48 +125,43 @@ class ChatbotWrapper(mlflow.pyfunc.PythonModel):
         question = model_input.get("question", "")
         return {"response": self.chatbot.run(question)}
 
-
 # COMMAND ----------
 
 # DBTITLE 1,Register Model
 import mlflow
-from mlflow.models.signature import infer_signature
 import pandas as pd
-from datetime import datetime, timedelta
-import pytz
+from mlflow.models.signature import infer_signature
 
-# 🧾 Example input
-input_df = pd.DataFrame([{"question": "What are the symptoms of flu?"}])
-signature = infer_signature(input_df)
+def register_chatbot_model():
+    input_df = pd.DataFrame([{"question": "What are the symptoms of flu?"}])
+    output_df = pd.DataFrame([{"response": "Fever, cough, sore throat, body aches, and fatigue."}])
+    signature = infer_signature(input_df, output_df)
 
-timestamp_str = datetime.now(pytz.utc).strftime("%Y%m%dT%H%M%SZ")
-experiment_name=f"/Workspace/AI Chabot & Agents/Experiment/{timestamp_str}"
-mlflow.set_experiment(experiment_name)
+    registered_model_name = "MedicalChatbotModel"
+    mlflow.set_experiment("/Users/sasidhar.tech@outlook.com/Medical_Chatbot_Registration")
 
-with mlflow.start_run() as run:
-    mlflow.pyfunc.log_model(
-        artifact_path="chatbot_model",
-        python_model=ChatbotWrapper(),
-        pip_requirements=[
-            "mlflow",
-            "google-generativeai",
-            "pandas",
-            "cloudpickle==2.2.1"
-        ],  
-        # ✅ This replaces conda_env
-        input_example=input_df,
-        signature=signature
-    )
+    with mlflow.start_run() as run:
+        print(f"\n--- Starting MLflow run: {run.info.run_id} ---")
+        print(f"Registering model as: '{registered_model_name}'")
 
-    run_id = run.info.run_id
-    print(f"✅ Logged model in run ID: {run_id}")
+        mlflow.pyfunc.log_model(
+            artifact_path="chatbot_model",
+            python_model=ChatbotWrapper(),
+            registered_model_name=registered_model_name, 
+            pip_requirements=[                            
+                "mlflow",
+                "google-generativeai",
+                "pandas",
+                "cloudpickle==2.2.1"
+            ],
+            input_example=input_df,
+            signature=signature
+        )
 
-    model_uri = f"runs:/{run_id}/chatbot_model"
-    registered_model = mlflow.register_model(
-        model_uri=model_uri,
-        name="MedicalChatbotModel"
-    )
-    print(f"✅ Registered model 'MedicalChatbotModel', version: {registered_model.version}")
+        print("\n✅ Model registration complete!")
+        print(f"➡️ Check MLflow UI under 'Models' tab for '{registered_model_name}'.")
+
+register_chatbot_model()
 
 
 # COMMAND ----------
@@ -160,7 +169,6 @@ with mlflow.start_run() as run:
 # DBTITLE 1,Local Testing
 # Cell / test_script.py
 
-# from chatbot_model import MedicalChatbot, ChatbotWrapper
 
 # 1️⃣ Test the raw MedicalChatbot logic
 print("=== Direct MedicalChatbot ===")
